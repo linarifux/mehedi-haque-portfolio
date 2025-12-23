@@ -13,7 +13,7 @@ export const register = createAsyncThunk(
     try {
       // Note: We use the '/register' endpoint now
       const response = await axios.post(
-        "http://localhost:5000/api/auth/register",
+        `${API_URL}/register`,
         user
       );
 
@@ -33,7 +33,7 @@ export const login = createAsyncThunk(
   "auth/login",
   async (userData, thunkAPI) => {
     try {
-      const response = await axios.post(API_URL, userData);
+      const response = await axios.post(`${API_URL}/login`, userData);
 
       if (response.data) {
         localStorage.setItem("user", JSON.stringify(response.data));

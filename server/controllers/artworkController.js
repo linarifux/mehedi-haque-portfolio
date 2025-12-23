@@ -1,5 +1,6 @@
 import Artwork from '../models/Artwork.js';
-import { v2 as cloudinary } from 'cloudinary';
+// REMOVED: import { v2 as cloudinary } from 'cloudinary'; 
+// We removed the import above so Vercel doesn't crash.
 
 // @desc    Fetch all artworks (with optional category filter)
 // @route   GET /api/artworks
@@ -31,25 +32,29 @@ export const getArtworks = async (req, res) => {
 // @access  Private (Admin only)
 export const createArtwork = async (req, res) => {
   try {
-    const { title, category, publication, year, tags, description, isFeatured } = req.body;
+    // 1. Accept 'image' from the body (It's now a URL string from React)
+    const { title, category, publication, year, tags, description, isFeatured, image } = req.body;
 
-    // validation: Check if image was uploaded
-    if (!req.file) {
-      return res.status(400).json({ message: 'Please upload an image' });
+    // validation: Check if image URL exists
+    if (!image) {
+      return res.status(400).json({ message: 'Image URL is required' });
     }
 
     const artwork = new Artwork({
       title,
+      // We adapt the structure to match your Schema.
+      // Since client-side upload doesn't give a public_id easily, we just save the URL.
       image: {
-        url: req.file.path,       // Cloudinary URL from Multer
-        public_id: req.file.filename // Cloudinary ID (needed for deletion)
+        url: image, 
+        public_id: null // Set to null because we aren't handling deletion via API anymore
       },
       category,
       publication,
       year,
-      tags: tags ? tags.split(',').map(tag => tag.trim()) : [], // Convert "satire, politics" string to array
+      // Handle tags whether they come as a string (from FormData) or Array (from JSON)
+      tags: Array.isArray(tags) ? tags : (tags ? tags.split(',').map(tag => tag.trim()) : []), 
       description,
-      isFeatured: isFeatured === 'true', // Convert string "true" to boolean
+      isFeatured: isFeatured === 'true' || isFeatured === true, 
     });
 
     const createdArtwork = await artwork.save();
@@ -69,15 +74,13 @@ export const deleteArtwork = async (req, res) => {
     const artwork = await Artwork.findById(req.params.id);
 
     if (artwork) {
-      // 1. Delete image from Cloudinary
-      if (artwork.image && artwork.image.public_id) {
-        await cloudinary.uploader.destroy(artwork.image.public_id);
-      }
+      // NOTE: We no longer delete the image from Cloudinary here to prevent backend crashes.
+      // We only delete the database record. The image stays in Cloudinary storage (which is safe/cheap).
 
-      // 2. Delete from Database
+      // Delete from Database
       await artwork.deleteOne();
       
-      res.json({ message: 'Artwork removed' });
+      res.json({ message: 'Artwork removed from database' });
     } else {
       res.status(404);
       throw new Error('Artwork not found');

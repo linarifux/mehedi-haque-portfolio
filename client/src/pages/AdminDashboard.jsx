@@ -1,49 +1,102 @@
 import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios'; // Import Axios for the Cloudinary upload
 import { createArtwork, deleteArtwork, fetchArtworks } from '../features/gallery/gallerySlice';
 import { logout } from '../features/auth/authSlice';
-import { Trash2, Upload, LogOut } from 'lucide-react';
+import { Trash2, Upload, LogOut, Image as ImageIcon } from 'lucide-react';
 
 const AdminDashboard = () => {
   // Upload State
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('Political Satire');
   const [year, setYear] = useState(new Date().getFullYear());
-  const [file, setFile] = useState(null);
+  
+  // Image State
+  const [imageFile, setImageFile] = useState(null);
+  const [preview, setPreview] = useState('');
+  const [uploadingImage, setUploadingImage] = useState(false); // Local state for image upload progress
 
   const navigate = useNavigate();
   const dispatch = useDispatch();
 
   const { user } = useSelector((state) => state.auth);
-  const { artworks, isLoading } = useSelector((state) => state.gallery);
+  const { artworks, isLoading, isError, message } = useSelector((state) => state.gallery);
 
   // Auth Check & Initial Fetch
   useEffect(() => {
     if (!user) {
       navigate('/login');
     } else {
-      // Load current artworks so we can manage them
-      dispatch(fetchArtworks({ category: '' })); 
+      dispatch(fetchArtworks({ category: '' }));
     }
   }, [user, navigate, dispatch]);
 
+  // Helper: Handle File Selection & Preview
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setImageFile(file);
+      setPreview(URL.createObjectURL(file)); // Show preview instantly
+    }
+  };
+
+  // Helper: Upload to Cloudinary (Client-Side)
+  const uploadToCloudinary = async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', import.meta.env.VITE_UPLOAD_PRESET); 
+    formData.append('cloud_name', import.meta.env.VITE_CLOUD_NAME);
+
+    try {
+      const res = await axios.post(
+        `https://api.cloudinary.com/v1_1/${import.meta.env.VITE_CLOUD_NAME}/image/upload`,
+        formData
+      );
+      return res.data.secure_url;
+    } catch (error) {
+      console.error("Cloudinary Upload Error:", error);
+      throw new Error('Image upload failed');
+    }
+  };
+
   const handleUpload = async (e) => {
     e.preventDefault();
-    if (!file) return alert("Please select an image");
 
-    const formData = new FormData();
-    formData.append('title', title);
-    formData.append('category', category);
-    formData.append('year', year);
-    formData.append('image', file);
+    if (!imageFile) {
+      return alert("Please select an image");
+    }
 
-    dispatch(createArtwork(formData));
-    
-    // Reset form
-    setTitle('');
-    setFile(null);
-    alert("Upload started...");
+    setUploadingImage(true);
+
+    try {
+      // 1. Upload Image to Cloudinary first
+      const imageUrl = await uploadToCloudinary(imageFile);
+
+      // 2. Prepare Data (JSON object, NOT FormData)
+      const artworkData = {
+        title,
+        category,
+        year,
+        image: imageUrl, // Send the URL string
+      };
+
+      // 3. Dispatch to Redux (Your slice should handle JSON automatically)
+      await dispatch(createArtwork(artworkData)).unwrap();
+      
+      // 4. Reset form on success
+      setTitle('');
+      setCategory('Political Satire');
+      setImageFile(null);
+      setPreview('');
+      alert("Artwork Published Successfully!");
+      
+    } catch (error) {
+      console.error("Upload failed", error);
+      alert("Failed to upload artwork. " + (error.message || message));
+    } finally {
+      setUploadingImage(false);
+    }
   };
 
   const handleDelete = (id) => {
@@ -91,16 +144,44 @@ const AdminDashboard = () => {
                   <option>Character Design</option>
                   <option>Unmad Cover</option>
                   <option>Illustration</option>
+                  <option>Sketch</option>
                 </select>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Image File</label>
-                <input type="file" onChange={(e) => setFile(e.target.files[0])} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200"/>
+               {/* Year Input (Added missing field from logic) */}
+               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Year</label>
+                <input type="number" value={year} onChange={(e) => setYear(e.target.value)} className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-gray-900 outline-none" />
               </div>
 
-              <button type="submit" className="w-full bg-gray-900 text-white py-3 rounded-lg font-medium hover:bg-gray-800 transition">
-                {isLoading ? 'Uploading...' : 'Publish Artwork'}
+              {/* Image Input & Preview */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Image File</label>
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:bg-gray-50 transition relative">
+                  <input 
+                    type="file" 
+                    accept="image/*"
+                    onChange={handleFileChange} 
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  {preview ? (
+                    <img src={preview} alt="Preview" className="mx-auto h-32 object-contain" />
+                  ) : (
+                    <div className="text-gray-400 flex flex-col items-center">
+                      <ImageIcon size={24} className="mb-2"/>
+                      <span className="text-xs">Click to select image</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <button 
+                type="submit" 
+                disabled={uploadingImage || isLoading}
+                className={`w-full py-3 rounded-lg font-medium transition text-white
+                  ${(uploadingImage || isLoading) ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-900 hover:bg-gray-800'}`}
+              >
+                {uploadingImage ? 'Uploading Image...' : isLoading ? 'Saving to DB...' : 'Publish Artwork'}
               </button>
             </form>
           </div>
@@ -123,7 +204,8 @@ const AdminDashboard = () => {
                     <tr key={art._id} className="hover:bg-gray-50 transition">
                       <td className="py-4">
                         <div className="h-16 w-16 rounded overflow-hidden bg-gray-100">
-                          <img src={art.image.url} alt={art.title} className="h-full w-full object-cover" />
+                          {/* Access the URL safely */}
+                          <img src={art.image?.url || art.image} alt={art.title} className="h-full w-full object-cover" />
                         </div>
                       </td>
                       <td className="py-4">

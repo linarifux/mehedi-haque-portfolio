@@ -1,13 +1,13 @@
 import mongoose from 'mongoose';
 
-const artworkSchema = mongoose.Schema(
+const artworkSchema = new mongoose.Schema(
   {
     title: {
       type: String,
       required: [true, 'Please add a title'],
       trim: true,
     },
-    // We store the Cloudinary URL and ID so we can delete it later if needed
+    // Updated Image Schema
     image: {
       url: {
         type: String,
@@ -15,7 +15,7 @@ const artworkSchema = mongoose.Schema(
       },
       public_id: {
         type: String,
-        required: true,
+        required: false, // Changed to false (optional) since we might not always have it
       },
     },
     category: {

@@ -1,4 +1,5 @@
 import Artwork from '../models/Artwork.js';
+import { v2 as cloudinary } from 'cloudinary';
 
 // @desc    Fetch all artworks (with optional category filter)
 // @route   GET /api/artworks
@@ -56,5 +57,32 @@ export const createArtwork = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server Error: ' + error.message });
+  }
+};
+
+
+// @desc    Delete an artwork
+// @route   DELETE /api/artworks/:id
+// @access  Private (Admin)
+export const deleteArtwork = async (req, res) => {
+  try {
+    const artwork = await Artwork.findById(req.params.id);
+
+    if (artwork) {
+      // 1. Delete image from Cloudinary
+      if (artwork.image && artwork.image.public_id) {
+        await cloudinary.uploader.destroy(artwork.image.public_id);
+      }
+
+      // 2. Delete from Database
+      await artwork.deleteOne();
+      
+      res.json({ message: 'Artwork removed' });
+    } else {
+      res.status(404);
+      throw new Error('Artwork not found');
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 };
